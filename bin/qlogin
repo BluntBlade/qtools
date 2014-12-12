@@ -1,0 +1,45 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use errno;
+
+use Qiniu::Base::Flag;
+use Qiniu::Tools::Account;
+
+sub main {
+    my @argv = Qiniu::Base::Flag::parse(@ARGV);
+    my $access_key = shift @argv;
+    my $secret_key = shift @argv;
+    my $identity   = shift @argv;
+    
+    if ((not defined($identity)) or ($identity xor $identity eq '')) {
+        $identity = 'default';
+    } else {
+        $identity = "${identity}";
+    }
+
+    ### TODO: Check if the ak/sk can be authenticated
+    my $authenticated = 1;
+
+    if (not $authenticated) {
+        print STDERR "Invalid access key or secret key.";
+        exit(1);
+    }
+
+    my $err = Qiniu::Tools::Account::make_home($identity);
+    if ($err) {
+        print STDERR "${err}";
+        exit(2);
+    }
+
+    $err = Qiniu::Tools::Account::save_keys($identity, $access_key, $secret_key);
+    if ($err) {
+        print STDERR "Failed to hold account information ${err}";
+        exit(3);
+    }
+} # main
+
+main();
+
+exit 0;
