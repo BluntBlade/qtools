@@ -22,10 +22,10 @@ sub new {
     return bless $self, $class;
 } # new
 
-sub length {
+sub size {
     my $self = shift;
     return $self->{buf_len};
-} # length
+} # size
 
 sub read {
     my $self        = shift;
@@ -62,20 +62,20 @@ sub write {
 
     substr($self->{buf}, $self->{buf_len}, $writing_bytes, $data);
     $self->{buf_len} += $writing_bytes;
-    return $self;
+    return $writing_bytes;
 } # write
 
 sub rewind {
     my $self = shift;
     $self->{read_off} = 0;
-    return $self;
+    return 1;
 } # rewind
 
 sub clear {
     my $self = shift;
     $self->{read_off} = 0;
     $self->{buf_len} = 0;
-    return $self;
+    return 1;
 } # clear
 
 1;
