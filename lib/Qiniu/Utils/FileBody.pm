@@ -7,6 +7,19 @@ use warnings;
 
 use Fcntl qw(SEEK_SET);
 
+my $open_for_reading = sub {
+    my $self = shift;
+    my $ret = open(my $rfh, "<", $self->{wfh}->fileno());
+    if (not $ret) {
+        return undef;
+    }
+    if (defined($self->{rfh})) {
+        close($self->{rfh});
+    }
+    $self->{rfh} = $rfh;
+    return 1;
+}; # open_for_reading
+
 sub new {
     my $class = shift || __PACKAGE__;
     my $self = {};
@@ -19,7 +32,9 @@ sub new {
     $self->{fsize} = 0;
 
     bless $self, $class;
-    $self->rewind();
+    if (not $open_for_reading->($self)) {
+        return undef;
+    }
 
     return $self;
 } # new
@@ -60,15 +75,10 @@ sub write {
 
 sub rewind {
     my $self = shift;
-    my $ret = open(my $rfh, "<", $self->{wfh}->fileno());
-    if (not $ret) {
-        return undef;
-    }
     if (defined($self->{rfh})) {
-        close($self->{rfh});
+        return seek($self->{rfh}, 0, SEEK_SET);
     }
-    $self->{rfh} = $rfh;
-    return $ret;
+    return 1;
 } # rewind
 
 sub clear {
@@ -81,7 +91,7 @@ sub clear {
     $self->{wfh} = $wfh;
     $self->{fsize} = 0;
 
-    return $self->rewind();
+    return $open_for_reading->($self);
 } # clear
 
 sub close {
