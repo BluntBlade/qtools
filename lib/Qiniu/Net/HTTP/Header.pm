@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-package Qiniu::Net::Http::Header;
+package Qiniu::Net::HTTP::Header;
 
 sub new {
     my $class = shift;

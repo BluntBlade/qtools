@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-package Qiniu::Net::Http::Client;
+package Qiniu::Net::HTTP::Client;
 
 use strict;
 use warnings;
