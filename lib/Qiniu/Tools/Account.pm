@@ -14,7 +14,7 @@ my $get_home_dir = sub {
 }; # get_home_dir
 
 my $make_path = undef;
-{
+eval {
     require File::Path;
 
     $make_path = sub {
@@ -23,7 +23,7 @@ my $make_path = undef;
         }
         return &File::Path::make_path;
     }
-}
+};
 if ($@) {
     $make_path = sub {
         my $pathname = shift;

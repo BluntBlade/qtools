@@ -10,7 +10,7 @@ use IO::Handle;
 ### Setting module-dependent subroutines
 
 my $get_timestamp = undef;
-{
+eval {
     require Time::HiRes;
     $get_timestamp = sub {
         my ($sec, $usec) = Time::HiRes::gettimeofday();
@@ -26,7 +26,7 @@ my $get_timestamp = undef;
             $usec,
         );
     };
-}
+};
 if ($@) {
     $get_timestamp = sub {
         my ($s, $m, $h, $D, $M, $Y) = localtime(time());
