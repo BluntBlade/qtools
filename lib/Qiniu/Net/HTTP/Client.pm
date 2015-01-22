@@ -31,8 +31,8 @@ use constant MAX_BUFFER_BODY_SIZE   => 1 << 20;
 sub http_handler {
     my $url     = shift;
     my $method  = shift;
-    my $header  = shift;
-    my $body    = shift;
+    my $req_header  = shift;
+    my $req_body    = shift;
 
     my $req = {};
     my $res = {
@@ -42,32 +42,34 @@ sub http_handler {
     my $handler = {};
     $handler->{on_close} = sub {
         if (defined($res->{body})) {
+            ### rewind for reading data
             $res->{body}->rewind();
         }
 
+        ### clear up memory references
         undef $req;
         undef $res;
     };
 
-    # set up the on_write callback handler
+    ### set up the on_write callback handler
     {
         my $new_headers = {};
 
         ### avoid to calculate the length many times
-        my $content_length = $body->size();
+        my $content_length = $req_body->size();
         if (defined($content_length) and $content_length > 0) {
             $new_headers->{'Content-Length'} = $content_length;
         }
 
-        my $content_type = $body->mime_type();
-        if (defined($content_type)) {
+        my $content_type = $req_body->mime_type();
+        if (defined($content_type) and $content_type ne q{}) {
             $new_headers->{'Content-Type'} = $content_type;
         } else {
             $new_headers->{'Content-Type'} = 'application/octet-stream';
         }
 
         ### merge headers passed by caller and override default ones
-        $req->{headers} = $header->clone_and_merge($new_headers);
+        $req->{headers} = $req_header->clone_and_merge($new_headers);
 
         $req->{url_line} = uc($method) . " ${url} HTTP/1.1" . CRLF;
         $req->{url_line_off} = 0;
@@ -76,11 +78,11 @@ sub http_handler {
         $req->{phase} = ON_WRITE_REQUEST_LINE;
 
         $handler->{on_write} = sub {
-            my $fd       = shift;
+            my $fh       = shift;
             my $max_size = shift;
 
             if ($req->{phase} eq ON_WRITE_STOP) {
-                return 0;
+                return 0, 0;
             }
 
             my $remainder_len = $max_size;
@@ -91,22 +93,22 @@ sub http_handler {
                     $writing_size = $remainder_len;
                 }
 
-                my $written_bytes = $fd->write(substr($req->{url_line}, $req->{url_line_off}, $writing_size));
+                my $written_bytes = $fh->write(substr($req->{url_line}, $req->{url_line_off}, $writing_size));
                 if ($written_bytes == -1) {
                     if ($! == Errno::EAGAIN) {
-                        return $max_size - $remainder_len;
+                        ### cannot write data synchronously
+                        return 0, $max_size - $remainder_len;
                     }
-                    return -1;
-                }
-
-                if ($written_bytes == 0) {
-                    return $max_size - $remainder_len;
+                    return -1, $max_size - $remainder_len;
+                } elsif ($written_bytes == 0) {
+                    return 0, $max_size - $remainder_len;
                 }
 
                 $req->{url_line_off} += $written_bytes;
                 $remainder_len -= $written_bytes;
                 if ($req->{url_line_off} < length($req->{url_line})) {
-                    return $max_size - $remainder_len;
+                    ### no more buffer to write url line in, return immediately
+                    return 0, $max_size - $remainder_len;
                 }
 
                 $req->{phase} = ON_WRITE_HEADERS;
@@ -119,25 +121,26 @@ sub http_handler {
                     my $hdr_line = "${hdr}: $val" . CRLF;
 
                     if (length($hdr_line) > $remainder_len) {
-                        return $max_size - $remainder_len;
+                        ### no more buffer to write head line in, return immediately
+                        return 0, $max_size - $remainder_len;
                     }
 
-                    my $written_bytes = $fd->write($hdr_line);
+                    my $written_bytes = $fh->write($hdr_line);
                     if ($written_bytes == -1) {
                         if ($! == Errno::EAGAIN) {
-                            return $max_size - $remainder_len;
+                            return 0, $max_size - $remainder_len;
                         }
-                        return -1;
-                    }
-
-                    if ($written_bytes == 0) {
-                        return $max_size - $remainder_len;
+                        return -1, $max_size - $remainder_len;
+                    } elsif ($written_bytes == 0) {
+                        ### no more buffer to write head line in, return immediately
+                        return 0, $max_size - $remainder_len;
                     }
 
                     $remainder_len -= length($hdr_line);
                     $req->{hdr_index} += 1;
                     if ($remainder_len == 0) {
-                        return $max_size - $remainder_len;
+                        ### no more buffer to write head line in, return immediately
+                        return 0, $max_size - $remainder_len;
                     }
                 } # while
 
@@ -145,45 +148,44 @@ sub http_handler {
             } # ON_WRITE_HEADERS
 
             if ($req->{phase} eq ON_WRITE_BODY) {
-                my $written_bytes = $body->write($fd, $remainder_len);
+                my $written_bytes = $req_body->write($fh, $remainder_len);
                 if ($written_bytes == -1) {
                     if ($! == Errno::EAGAIN) {
-                        return $max_size - $remainder_len;
+                        ### no more buffer to write body in, return immediately
+                        return 0, $max_size - $remainder_len;
                     }
-                    return -1;
-                }
-
-                if ($written_bytes == 0) {
+                    return -1, $max_size - $remainder_len;
+                } elsif ($written_bytes == 0) {
+                    ### no more buffer to write body in, return immediately
                     $req->{phase} = ON_WRITE_STOP;
-                    return $max_size - $remainder_len;
+                    return 0, $max_size - $remainder_len;
                 }
 
                 $remainder_len -= $written_bytes;
-                return $max_size - $remainder_len;
+                return 0, $max_size - $remainder_len;
             } # ON_WRITE_BODY
         }; # on_write
     } # set up the on_write callback handler
 
-    # set up the on_read callback handler
+    ### set up the on_read callback handler
     {
         my $remainder = "";
         $res->{phase} = ON_READ_RESPONSE_LINE;
         $handler->{on_read} = sub {
-            my $fd = shift;
+            my $fh = shift;
             my $data = "";
             my $total_read_bytes = 0;
 
-            while (my $read_bytes = $fd->read(\$data, 8192)) {
+            while (my $read_bytes = $fh->read(\$data, 8192)) {
                 if ($read_bytes == -1) {
                     if ($! == Errno::EAGAIN) {
-                        return $total_read_bytes;
+                        ### no more data to read in
+                        return 0, $total_read_bytes;
                     }
-                    return -1;
-                }
-
-                if ($read_bytes == 0) {
-                    # no more data
-                    return $total_read_bytes;
+                    return -1, $total_read_bytes;
+                } elsif ($read_bytes == 0) {
+                    ### no more data to read in
+                    return 0, $total_read_bytes;
                 }
 
                 $remainder .= $data;
@@ -212,14 +214,18 @@ sub http_handler {
                             if ($val =~ m/^ *(\d+) *$/) {
                                 $res->{body_size} = $val + 0;
                                 if ($res->{body_size} < MAX_BUFFER_BODY_SIZE) {
-                                    $res->{body} = Qiniu::Utils::BufferBody->new($res->{body_size});
+                                    $res->{body} = Qiniu::Net::HTTP::BufferBody->new($res->{body_size});
                                 }
                             }
-                        }
+                        } # if
                     } # while
 
                     if ($remainder =~ m,^\r?\n$,mgc) {
                         $remainder = substr($remainder, 0, pos($remainder));
+                        if (not defined($res->{body})) {
+                            $res->{body} = Qiniu::Net::HTTP::FileBody->new();
+                        }
+
                         $res->{phase} = ON_READ_BODY;
                     } else {
                         $remainder = substr($remainder, 0, pos($remainder));
@@ -228,10 +234,6 @@ sub http_handler {
                 } # ON_READ_HEADERS
 
                 if ($res->{phase} eq ON_READ_BODY) {
-                    if (not defined($res->{body})) {
-                        $res->{body} = Qiniu::Utils::FileBody->new();
-                    }
-
                     $res->{body}->write($remainder);
                     $remainder = undef;
                 } # ON_READ_BODY
