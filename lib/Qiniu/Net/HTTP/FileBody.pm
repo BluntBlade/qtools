@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-package Qiniu::Utils::FileBody;
+package Qiniu::Net::HTTP::FileBody;
 
 use strict;
 use warnings;

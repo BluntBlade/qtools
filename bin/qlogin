@@ -4,11 +4,11 @@ use strict;
 use warnings;
 use errno;
 
-use Qiniu::Base::Flag;
+use Qiniu::Flag;
 use Qiniu::Tools::Account;
 
 sub main {
-    my @argv = Qiniu::Base::Flag::parse(@ARGV);
+    my @argv = Qiniu::Flag::parse(@ARGV);
     my $access_key = shift @argv;
     my $secret_key = shift @argv;
     my $identity   = shift @argv;

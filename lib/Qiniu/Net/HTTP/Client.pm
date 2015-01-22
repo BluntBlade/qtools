@@ -9,8 +9,8 @@ use warnings;
 
 use Errno;
 
-use Qiniu::Utils::BufferBody;
-use Qiniu::Utils::FileBody;
+use Qiniu::Net::HTTP::BufferBody;
+use Qiniu::Net::HTTP::FileBody;
 
 ### constants
 

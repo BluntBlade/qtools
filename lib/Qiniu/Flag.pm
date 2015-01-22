@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-package Qiniu::Base::Flag;
+package Qiniu::Flag;
 
 use strict;
 use warnings;

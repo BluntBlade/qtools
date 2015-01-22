@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-package Qiniu::Utils::BufferBody;
+package Qiniu::Net::HTTP::BufferBody;
 
 use constant CHUNK_SIZE => 1 << 20;
 use constant CHUNK_MASK => ;
