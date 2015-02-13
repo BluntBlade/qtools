@@ -148,17 +148,13 @@ sub to_callback_handler {
         } # ON_SEND_HEADERS
 
         if ($req->{phase} eq ON_SEND_BODY) {
-            my $written_bytes = $self->{body}->on_send($fh, $remainder_len);
-            if ($written_bytes == -1) {
-                if ($! == Errno::EAGAIN) {
-                    ### no more buffer to write body in, return immediately
-                    return 0, $max_size - $remainder_len;
-                }
-                return -1, $max_size - $remainder_len;
-            } elsif ($written_bytes == 0) {
+            my ($ret, $written_bytes) = $self->{body}->on_send($fh, $remainder_len);
+            if ($ret == -1) {
+                return $ret, $max_size - $remainder_len;
+            } elsif ($ret == 0) {
                 ### no more buffer to write body in, return immediately
                 $req->{phase} = ON_SEND_STOP;
-                return 0, $max_size - $remainder_len;
+                return $ret, $max_size - $remainder_len;
             }
 
             $remainder_len -= $written_bytes;
